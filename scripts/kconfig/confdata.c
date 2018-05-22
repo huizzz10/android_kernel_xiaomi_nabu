@@ -252,7 +252,7 @@ int conf_read_simple(const char *name, int def)
 			name = sym_get_string_value(prop->expr->left.sym);
 			in = zconf_fopen(name);
 			if (in) {
-				conf_message(_("using defaults found in %s"),
+				conf_message("using defaults found in %s",
 					 name);
 				goto load;
 			}
@@ -806,7 +806,7 @@ next:
 			return 1;
 	}
 
-	conf_message(_("configuration written to %s"), newname);
+	conf_message("configuration written to %s", newname);
 
 	sym_set_change_count(0);
 
