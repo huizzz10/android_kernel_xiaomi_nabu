@@ -3,14 +3,10 @@
 # For a description of the syntax of this configuration file,
 # see Documentation/kbuild/kconfig-language.txt.
 #
-mainmenu "Linux/$ARCH $KERNELVERSION Kernel Configuration"
+mainmenu "Linux/$(ARCH) $(KERNELVERSION) Kernel Configuration"
 
 source "scripts/Kconfig.include"
 
-config SRCARCH
-	string
-	option env="SRCARCH"
-
-source "arch/$SRCARCH/Kconfig"
+source "arch/$(SRCARCH)/Kconfig"
 
 source "techpack/Kconfig"
