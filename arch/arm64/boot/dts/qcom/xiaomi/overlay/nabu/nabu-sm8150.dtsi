@@ -18,7 +18,13 @@ And public attribution of xiaomi platforms(like J20S and so and)
 
 #include "../common/smb1390.dtsi"
 
-
+&ramoops {
+    console-size = <0x200000>;
+    record-size = <0x200000>;
+    pmsg-size = <0x200000>;
+    ecc-size = <16>;
+    max-reason = <4>;
+};
 
 &pm8150b_fg {
 	qcom,battery-data = <&nabu_batterydata>;
