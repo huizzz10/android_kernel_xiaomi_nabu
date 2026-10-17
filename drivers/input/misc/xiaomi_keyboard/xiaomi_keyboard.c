@@ -15,10 +15,50 @@
 #include "xiaomi_keyboard.h"
 #include <linux/msm_drm_notify.h>
 #include <linux/notifier.h>
+#include <linux/usb.h>
 
 static struct xiaomi_keyboard_data *mdata;
 
 static void set_keyboard_status(bool on);
+
+static int kb_usb_notify(struct notifier_block *nb, unsigned long event,
+			 void *ptr)
+{
+	struct usb_device *udev = ptr;
+	int i;
+
+	if (event != USB_DEVICE_ADD)
+		return NOTIFY_DONE;
+	if (!mdata || !udev || !udev->actconfig)
+		return NOTIFY_DONE;
+	if (udev->descriptor.idVendor != 0x3206 ||
+	    udev->descriptor.idProduct != 0x3FFC)
+		return NOTIFY_DONE;
+
+	for (i = 0; i < udev->actconfig->desc.bNumInterfaces; i++) {
+		struct usb_interface *intf = udev->actconfig->interface[i];
+		struct usb_driver *drv;
+
+		if (!intf || !intf->dev.driver)
+			continue;
+		if (intf->cur_altsetting->desc.bInterfaceClass != USB_CLASS_HID)
+			continue;
+		if (intf->cur_altsetting->desc.bInterfaceProtocol != 1 &&
+		    intf->cur_altsetting->desc.bInterfaceProtocol != 2)
+			continue;
+
+		drv = to_usb_driver(intf->dev.driver);
+		MI_KB_INFO("gate: release HID intf %d (proto %d) at add\n",
+			   intf->cur_altsetting->desc.bInterfaceNumber,
+			   intf->cur_altsetting->desc.bInterfaceProtocol);
+		usb_driver_release_interface(drv, intf);
+	}
+	return NOTIFY_OK;
+}
+
+static struct notifier_block kb_usb_notifier = {
+	.notifier_call = kb_usb_notify,
+};
 
 static void xiaomi_keyboard_reset(void)
 {
@@ -393,7 +433,7 @@ static void keyboard_resume_work(struct work_struct *work)
 static void keyboard_suspend_work(struct work_struct *work)
 {
 	struct xiaomi_keyboard_data *mdata =
-		container_of(work, struct xiaomi_keyboard_data, resume_work);
+		container_of(work, struct xiaomi_keyboard_data, suspend_work);
 	xiaomi_keyboard_suspend(&mdata->pdev->dev);
 }
 
@@ -569,6 +609,10 @@ static int xiaomi_keyboard_probe(struct platform_device *pdev)
 		goto err_register_power_supply_notif_failed;
 	}
 
+	usb_register_notify(&kb_usb_notifier);
+
+	set_keyboard_status(1);
+
 	MI_KB_INFO("Success\n");
 	return ret;
 
@@ -601,6 +645,7 @@ out:
 static int xiaomi_keyboard_remove(struct platform_device *pdev)
 {
 	MI_KB_INFO("enter\n");
+	usb_unregister_notify(&kb_usb_notifier);
 	msm_drm_unregister_client(&mdata->drm_notif);
 	destroy_workqueue(mdata->event_wq);
 	xiaomi_keyboard_gpio_deconfig(mdata->pdata);
