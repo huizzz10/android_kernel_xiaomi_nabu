@@ -616,9 +616,37 @@ emit_cond_jmp:
 	case BPF_JMP | BPF_CALL:
 	{
 		const u8 r0 = bpf2a64[BPF_REG_0];
-		const u64 func = (u64)__bpf_call_base + imm;
+		u64 func;
 
-		if (ctx->prog->is_func)
+		if (insn->src_reg == BPF_PSEUDO_CALL) {
+			struct bpf_prog **funcs = ctx->prog->aux->func;
+			u32 subprog = insn->off;
+
+			/*
+			 * A BPF-to-BPF call carries the offset from
+			 * __bpf_call_base to the callee's JIT image in the
+			 * 32-bit imm field.  The BPF JIT region sits at the
+			 * bottom of the kernel virtual address space while
+			 * KASLR may place the kernel image far above it, so
+			 * that offset does not always fit into an s32 and
+			 * gets truncated.  The verifier keeps the subprog id
+			 * in insn->off and the JITed callees in aux->func[],
+			 * so use the callee's absolute address whenever it
+			 * is available.  On the first pass aux->func is not
+			 * populated yet; the placeholder is replaced when the
+			 * verifier re-JITs the image with the call targets
+			 * resolved.
+			 */
+			if (funcs && subprog < ctx->prog->aux->func_cnt &&
+			    funcs[subprog])
+				func = (u64)(unsigned long)funcs[subprog]->bpf_func;
+			else
+				func = (u64)(unsigned long)__bpf_call_base;
+		} else {
+			func = (u64)__bpf_call_base + imm;
+		}
+
+		if (insn->src_reg == BPF_PSEUDO_CALL || ctx->prog->is_func)
 			emit_addr_mov_i64(tmp, func, ctx);
 		else
 			emit_a64_mov_i64(tmp, func, ctx);
@@ -967,6 +995,11 @@ skip_init_ctx:
 
 	if (build_body(&ctx)) {
 		bpf_jit_binary_free(header);
+		/* Make sure a failed extra pass is visible to jit_subprogs()
+		 * instead of leaving call sites pointing at the freed image.
+		 */
+		prog->bpf_func = NULL;
+		prog->jited = 0;
 		prog = orig_prog;
 		goto out_off;
 	}
@@ -976,6 +1009,11 @@ skip_init_ctx:
 	/* 3. Extra pass to validate JITed code. */
 	if (validate_code(&ctx)) {
 		bpf_jit_binary_free(header);
+		/* Same as above: never leave bpf_func pointing at freed
+		 * memory when the re-JIT pass does not cover the whole image.
+		 */
+		prog->bpf_func = NULL;
+		prog->jited = 0;
 		prog = orig_prog;
 		goto out_off;
 	}
