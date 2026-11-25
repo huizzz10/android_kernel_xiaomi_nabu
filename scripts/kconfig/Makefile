@@ -179,7 +179,7 @@ always := dochecklxdialog
 
 # generated files seem to need this to find local include files
 HOSTCFLAGS_zconf.lex.o	:= -I $(srctree)/$(src)
-HOSTCFLAGS_zconf.tab.o	:= -I $(srctree)/$(src)
+HOSTCFLAGS_zconf.tab.o	:= -I $(srctree)/$(src) -D_GNU_SOURCE
 
 HOSTLOADLIBES_qconf	= $(KC_QT_LIBS)
 HOSTCXXFLAGS_qconf.o	= $(KC_QT_CFLAGS)
